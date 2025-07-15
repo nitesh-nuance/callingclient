@@ -1,39 +1,365 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Communication Client - Calling Sample</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        color: #333;
+      }
+
+      .container {
+        background: white;
+        padding: 2.5rem;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        max-width: 500px;
+        width: 100%;
+        text-align: center;
+      }
+
+      h4 {
+        color: #667eea;
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      h1 {
+        color: #2c3e50;
+        font-size: 2.2rem;
+        margin-bottom: 2rem;
+        font-weight: 600;
+      }
+
+      input[type="text"] {
+        width: 300px;
+        padding: 1rem;
+        border: 2px solid #e1e8ed;
+        border-radius: 12px;
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+        background: #f8f9fa;
+      }
+
+      input[type="text"]:focus {
+        outline: none;
+        border-color: #667eea;
+        background: white;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        transform: translateY(-2px);
+      }
+
+      button {
+        padding: 1rem 2rem;
+        margin: 0.5rem;
+        border: none;
+        border-radius: 12px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        min-width: 120px;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      #token-submit {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+      }
+
+      #token-submit:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+      }
+
+      #call-button {
+        background: linear-gradient(45deg, #56ab2f, #a8e6cf);
+        color: white;
+      }
+
+      #call-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(86, 171, 47, 0.3);
+      }
+
+      #accept-call-button {
+        background: linear-gradient(45deg, #3498db, #74b9ff);
+        color: white;
+      }
+
+      #accept-call-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3);
+      }
+
+      #hang-up-button {
+        background: linear-gradient(45deg, #ff416c, #ff4b2b);
+        color: white;
+      }
+
+      #hang-up-button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(255, 65, 108, 0.3);
+      }
+
+      .button-group {
+        margin-top: 2rem;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      .input-section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 15px;
+        border: 1px solid #e9ecef;
+      }
+
+      .calling-section {
+        padding: 1.5rem;
+        background: #fff;
+        border-radius: 15px;
+        border: 2px solid #e9ecef;
+      }
+
+      .voice-controls-section {
+        margin-top: 2rem;
+        padding: 1.5rem;
+        background: #f0f8ff;
+        border-radius: 15px;
+        border: 2px solid #4a90e2;
+      }
+
+      .voice-controls-section h3 {
+        color: #4a90e2;
+        margin-bottom: 0.5rem;
+        font-size: 1.2rem;
+      }
+
+      .voice-controls-section p {
+        color: #666;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+      }
+
+      .voice-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+        margin-bottom: 1rem;
+      }
+
+      .voice-controls button {
+        min-width: 140px;
+        padding: 0.8rem 1.5rem;
+        font-size: 0.9rem;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .voice-controls button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+      }
+
+      .voice-controls button:disabled {
+        background: #d1d5db;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .voice-controls button.muted {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      }
+
+      .voice-controls button.muted:hover:not(:disabled) {
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+      }
+
+      .voice-status {
+        text-align: center;
+        padding: 0.8rem;
+        background: #f3f4f6;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        color: #374151;
+        margin-bottom: 1rem;
+        border-left: 4px solid #6b7280;
+      }
+
+      .voice-status.active {
+        background: #ecfdf5;
+        color: #047857;
+        border-left-color: #10b981;
+      }
+
+      .voice-status.muted {
+        background: #fef2f2;
+        color: #dc2626;
+        border-left-color: #ef4444;
+      }
+
+      .call-quality-info {
+        margin-top: 1rem;
+      }
+
+      .call-quality {
+        font-size: 0.8rem;
+        color: #6b7280;
+        padding: 0.5rem;
+        background: #f9fafb;
+        border-radius: 6px;
+        border: 1px solid #e5e7eb;
+        text-align: center;
+      }
+
+      .call-quality.good {
+        color: #047857;
+        background: #ecfdf5;
+        border-color: #10b981;
+      }
+
+      .call-quality.poor {
+        color: #dc2626;
+        background: #fef2f2;
+        border-color: #ef4444;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 1.5rem;
+        }
+        
+        h1 {
+          font-size: 1.8rem;
+        }
+        
+        input[type="text"] {
+          width: 100%;
+        }
+        
+        .button-group {
+          flex-direction: column;
+        }
+        
+        button {
+          width: 100%;
+          margin: 0.25rem 0;
+        }
+      }
+
+      /* Add a nice loading animation */
+      @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+      }
+
+      .loading {
+        animation: pulse 1.5s infinite;
+      }
+    </style>
   </head>
   <body>
-    <h4>Azure Communication Services</h4>
-    <h1>Calling Quickstart</h1>
-    <input 
-      id="token-input"
-      type="text"
-      placeholder="User access token"
-      style="margin-bottom:1em; width: 200px;"
-    />
-    </div>
-    <button id="token-submit" type="button">
-        Submit
-    </button>
-    <input 
-      id="callee-id-input"
-      type="text"
-      placeholder="Who would you like to call?"
-      style="margin-bottom:1em; width: 200px; display: block;"
-    />
-    <div>
-      <button id="call-button" type="button" disabled="true">
-        Start Call
-      </button>
-      &nbsp;
-      <button id="accept-call-button" type="button" disabled="true">
-        Accept Call
-      </button>
-      &nbsp;
-      <button id="hang-up-button" type="button" disabled="true">
-        Hang Up
-      </button>
+    <div class="container">
+      <h4>Azure Communication Services</h4>
+      <h1>Calling Quickstart</h1>
+      
+      <div class="input-section">
+        <input 
+          id="token-input"
+          type="text"
+          placeholder="User access token"
+        />
+        <br>
+        <button id="token-submit" type="button">
+          🔑 Submit Token
+        </button>
+      </div>
+
+      <div class="calling-section">
+        <input 
+          id="callee-id-input"
+          type="text"
+          placeholder="Who would you like to call?"
+        />
+        
+        <div class="button-group">
+          <button id="call-button" type="button" disabled="true">
+            📞 Start Call
+          </button>
+          <button id="accept-call-button" type="button" disabled="true">
+            ✅ Accept Call
+          </button>
+          <button id="hang-up-button" type="button" disabled="true">
+            📴 Hang Up
+          </button>
+        </div>
+      </div>
+
+      <div class="voice-controls-section">
+        <h3>�️ Voice Controls</h3>
+        <p>Manage your microphone and speaker during the call</p>
+        
+        <div class="voice-controls">
+          <button id="mute-button" type="button" disabled="true">
+            � Mute Microphone
+          </button>
+          <button id="speaker-button" type="button" disabled="true">
+            🔊 Mute Speaker
+          </button>
+          <button id="volume-up-button" type="button" disabled="true">
+            🔊+ Volume Up
+          </button>
+          <button id="volume-down-button" type="button" disabled="true">
+            �- Volume Down
+          </button>
+        </div>
+        
+        <div id="voice-status" class="voice-status">
+          Connect call first to enable voice controls
+        </div>
+        
+        <div class="call-quality-info">
+          <div id="call-quality" class="call-quality">
+            Call Quality: Not connected
+          </div>
+        </div>
+      </div>
     </div>
     <script src="./main.js"></script>
   </body>

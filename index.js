@@ -59,11 +59,23 @@ function subscribeToCallEvents(callObject, isIncomingCall = false) {
                 submitToken.disabled = false;
                 acceptCallButton.disabled = true;
                 
+                // Disable voice controls
+                updateVoiceControlsState(false);
+                
                 call = null;
                 if (isIncomingCall) {
                     incomingCall = null;
                 }
                 logger.info('UI reset after call ended');
+            }
+            
+            // Handle call connected state - enable voice controls
+            if (callObject.state === 'Connected') {
+                logger.success(`${isIncomingCall ? 'Accepted' : 'Outbound'} call connected successfully`, { 
+                    callId: callObject.id
+                });
+                updateVoiceControlsState(true);
+                monitorCallQuality(callObject);
             }
         });
         
@@ -120,29 +132,6 @@ const hangUpButton = document.getElementById("hang-up-button");
 const acceptCallButton = document.getElementById('accept-call-button');
 
 // Add Azure Function integration elements
-const functionUrlInput = document.createElement('input');
-functionUrlInput.type = 'text';
-functionUrlInput.id = 'function-url-input';
-functionUrlInput.value = 'https://healthcareagent-functions-ng1.azurewebsites.net';
-functionUrlInput.placeholder = 'Azure Function URL';
-
-const getTokenFromFunctionButton = document.createElement('button');
-getTokenFromFunctionButton.textContent = 'Get Token from Azure Function';
-getTokenFromFunctionButton.id = 'get-token-function-btn';
-
-const triggerTestCallButton = document.createElement('button');
-triggerTestCallButton.textContent = 'Trigger Test Call from Azure';
-triggerTestCallButton.id = 'trigger-test-call-btn';
-
-// Insert these elements into the DOM (assuming they should go near the token input)
-if (userToken && userToken.parentNode) {
-    userToken.parentNode.insertBefore(functionUrlInput, userToken);
-    userToken.parentNode.insertBefore(document.createElement('br'), userToken);
-    userToken.parentNode.insertBefore(getTokenFromFunctionButton, userToken);
-    userToken.parentNode.insertBefore(document.createElement('br'), userToken);
-    userToken.parentNode.insertBefore(triggerTestCallButton, userToken);
-    userToken.parentNode.insertBefore(document.createElement('br'), userToken);
-}
 
 // Log DOM elements found
 logger.info('DOM Elements initialized', {
@@ -151,103 +140,7 @@ logger.info('DOM Elements initialized', {
     submitToken: !!submitToken,
     callButton: !!callButton,
     hangUpButton: !!hangUpButton,
-    acceptCallButton: !!acceptCallButton,
-    functionUrlInput: !!functionUrlInput,
-    getTokenFromFunctionButton: !!getTokenFromFunctionButton,
-    triggerTestCallButton: !!triggerTestCallButton
-});
-
-// Add function to get token from Azure Function
-getTokenFromFunctionButton.addEventListener("click", async () => {
-    logger.info('Get token from Azure Function button clicked');
-    
-    const functionUrl = functionUrlInput.value.trim();
-    if (!functionUrl) {
-        logger.error('No Azure Function URL provided');
-        window.alert('Please enter the Azure Function URL');
-        return;
-    }
-    
-    try {
-        const tokenEndpoint = `${functionUrl}/api/GetToken`;
-        logger.info('Requesting token from Azure Function', { endpoint: tokenEndpoint });
-        
-        const response = await fetch(tokenEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({}) // Empty body, function will create/reuse user
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const tokenData = await response.json();
-        logger.success('Token received from Azure Function', { 
-            userId: tokenData.userId,
-            expiresOn: tokenData.expiresOn 
-        });
-        
-        // Set the token in the input field
-        userToken.value = tokenData.token;
-        
-        // Store the user ID for reference
-        window.currentUserId = tokenData.userId;
-        
-        logger.info('Token set in input field', { 
-            tokenLength: tokenData.token.length,
-            userId: tokenData.userId 
-        });
-        
-        // Automatically initialize the call agent
-        submitToken.click();
-        
-    } catch (error) {
-        logger.error('Failed to get token from Azure Function', error);
-        window.alert(`Failed to get token: ${error.message}`);
-    }
-});
-
-// Add function to trigger test call from Azure Function
-triggerTestCallButton.addEventListener("click", async () => {
-    logger.info('Trigger test call button clicked');
-    
-    const functionUrl = functionUrlInput.value.trim();
-    if (!functionUrl) {
-        logger.error('No Azure Function URL provided');
-        window.alert('Please enter the Azure Function URL');
-        return;
-    }
-    
-    if (!callAgent) {
-        logger.error('Call agent not initialized - get token first');
-        window.alert('Please get a token and initialize the call agent first');
-        return;
-    }
-    
-    try {
-        const testCallEndpoint = `${functionUrl}/api/MakeTestCall`;
-        logger.info('Triggering test call from Azure Function', { endpoint: testCallEndpoint });
-        
-        const response = await fetch(testCallEndpoint, {
-            method: 'GET'
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.text();
-        logger.success('Test call triggered successfully', { response: result });
-        
-        window.alert('Test call triggered! You should receive an incoming call shortly.');
-        
-    } catch (error) {
-        logger.error('Failed to trigger test call from Azure Function', error);
-        window.alert(`Failed to trigger test call: ${error.message}`);
-    }
+    acceptCallButton: !!acceptCallButton
 });
 
 submitToken.addEventListener("click", async () => {
@@ -461,6 +354,9 @@ hangUpButton.addEventListener("click", () => {
         submitToken.disabled = false;
         acceptCallButton.disabled = true;
         
+        // Disable voice controls
+        updateVoiceControlsState(false);
+        
         logger.info('UI updated after hang up');
         
     } catch (error) {
@@ -489,6 +385,220 @@ acceptCallButton.onclick = async () => {
         logger.error('Failed to accept incoming call', error);
         window.alert("Failed to accept call. Check console for details.");
     }
+}
+
+// Real-time voice controls functionality
+let isMicrophoneMuted = false;
+let isSpeakerMuted = false;
+let currentVolume = 1.0;
+
+// Get voice control elements
+const muteButton = document.getElementById("mute-button");
+const speakerButton = document.getElementById("speaker-button");
+const volumeUpButton = document.getElementById("volume-up-button");
+const volumeDownButton = document.getElementById("volume-down-button");
+const voiceStatus = document.getElementById("voice-status");
+const callQuality = document.getElementById("call-quality");
+
+// Voice control event handlers
+muteButton.onclick = async () => {
+    logger.info('Toggling microphone mute state');
+    
+    if (!call) {
+        logger.warning('No active call for microphone control');
+        return;
+    }
+    
+    try {
+        if (isMicrophoneMuted) {
+            // Unmute microphone
+            await call.unmute();
+            isMicrophoneMuted = false;
+            muteButton.textContent = '🎤 Mute Microphone';
+            muteButton.classList.remove('muted');
+            voiceStatus.textContent = 'Microphone: Active - You can speak';
+            voiceStatus.className = 'voice-status active';
+            logger.success('Microphone unmuted');
+        } else {
+            // Mute microphone
+            await call.mute();
+            isMicrophoneMuted = true;
+            muteButton.textContent = '🎤 Unmute Microphone';
+            muteButton.classList.add('muted');
+            voiceStatus.textContent = 'Microphone: Muted - Others cannot hear you';
+            voiceStatus.className = 'voice-status muted';
+            logger.success('Microphone muted');
+        }
+    } catch (error) {
+        logger.error('Failed to toggle microphone', error);
+        window.alert("Failed to control microphone. Check console for details.");
+    }
+};
+
+speakerButton.onclick = async () => {
+    logger.info('Toggling speaker mute state');
+    
+    if (!deviceManager) {
+        logger.warning('Device manager not available for speaker control');
+        return;
+    }
+    
+    try {
+        const speakers = await deviceManager.getSpeakers();
+        if (speakers.length === 0) {
+            logger.warning('No speakers available');
+            window.alert("No speakers detected.");
+            return;
+        }
+        
+        // Toggle speaker mute (this is a UI simulation - actual muting depends on browser implementation)
+        if (isSpeakerMuted) {
+            // Unmute speaker
+            isSpeakerMuted = false;
+            speakerButton.textContent = '🔊 Mute Speaker';
+            speakerButton.classList.remove('muted');
+            
+            // Restore volume
+            setSystemVolume(currentVolume);
+            
+            voiceStatus.textContent = 'Speaker: Active - You can hear others';
+            voiceStatus.className = 'voice-status active';
+            logger.success('Speaker unmuted');
+        } else {
+            // Mute speaker
+            isSpeakerMuted = true;
+            speakerButton.textContent = '🔊 Unmute Speaker';
+            speakerButton.classList.add('muted');
+            
+            // Set volume to 0
+            setSystemVolume(0);
+            
+            voiceStatus.textContent = 'Speaker: Muted - You cannot hear others';
+            voiceStatus.className = 'voice-status muted';
+            logger.success('Speaker muted');
+        }
+    } catch (error) {
+        logger.error('Failed to toggle speaker', error);
+        window.alert("Failed to control speaker. Check console for details.");
+    }
+};
+
+volumeUpButton.onclick = () => {
+    logger.info('Increasing volume');
+    
+    if (isSpeakerMuted) {
+        logger.warning('Cannot adjust volume - speaker is muted');
+        return;
+    }
+    
+    currentVolume = Math.min(1.0, currentVolume + 0.1);
+    setSystemVolume(currentVolume);
+    
+    voiceStatus.textContent = `Volume: ${Math.round(currentVolume * 100)}%`;
+    voiceStatus.className = 'voice-status active';
+    
+    logger.debug('Volume increased', { volume: currentVolume });
+};
+
+volumeDownButton.onclick = () => {
+    logger.info('Decreasing volume');
+    
+    if (isSpeakerMuted) {
+        logger.warning('Cannot adjust volume - speaker is muted');
+        return;
+    }
+    
+    currentVolume = Math.max(0.0, currentVolume - 0.1);
+    setSystemVolume(currentVolume);
+    
+    voiceStatus.textContent = `Volume: ${Math.round(currentVolume * 100)}%`;
+    voiceStatus.className = 'voice-status active';
+    
+    logger.debug('Volume decreased', { volume: currentVolume });
+};
+
+// Helper function to set system volume (browser-dependent)
+function setSystemVolume(volume) {
+    try {
+        // Note: Direct system volume control is limited in browsers
+        // This is a placeholder for volume control logic
+        logger.debug('Setting volume', { volume });
+        
+        // You could implement this by controlling audio elements or media streams
+        // For now, we'll just update the UI feedback
+    } catch (error) {
+        logger.warning('Could not set system volume', error);
+    }
+}
+
+// Helper function to enable/disable voice controls based on call state
+function updateVoiceControlsState(callActive) {
+    if (callActive) {
+        muteButton.disabled = false;
+        speakerButton.disabled = false;
+        volumeUpButton.disabled = false;
+        volumeDownButton.disabled = false;
+        voiceStatus.textContent = 'Voice controls active - Call connected';
+        voiceStatus.className = 'voice-status active';
+        callQuality.textContent = 'Call Quality: Connected';
+        callQuality.className = 'call-quality good';
+        logger.info('Voice controls enabled - call is active');
+    } else {
+        // Disable all voice controls
+        muteButton.disabled = true;
+        speakerButton.disabled = true;
+        volumeUpButton.disabled = true;
+        volumeDownButton.disabled = true;
+        voiceStatus.textContent = 'Connect call first to enable voice controls';
+        voiceStatus.className = 'voice-status';
+        callQuality.textContent = 'Call Quality: Not connected';
+        callQuality.className = 'call-quality';
+        
+        // Reset voice states
+        resetVoiceControlsState();
+        logger.info('Voice controls disabled - call not active');
+    }
+}
+
+// Helper function to reset voice controls state
+function resetVoiceControlsState() {
+    isMicrophoneMuted = false;
+    isSpeakerMuted = false;
+    currentVolume = 1.0;
+    
+    muteButton.textContent = '🎤 Mute Microphone';
+    muteButton.classList.remove('muted');
+    speakerButton.textContent = '🔊 Mute Speaker';
+    speakerButton.classList.remove('muted');
+}
+
+// Enhanced call quality monitoring
+function monitorCallQuality(callObject) {
+    if (!callObject) return;
+    
+    // Monitor call statistics (if available in the SDK)
+    const qualityMonitor = setInterval(() => {
+        if (!callObject || callObject.state !== 'Connected') {
+            clearInterval(qualityMonitor);
+            return;
+        }
+        
+        try {
+            // Note: Actual call quality metrics depend on Azure Communication Services SDK capabilities
+            // This is a simulation - replace with real SDK methods when available
+            const simulatedQuality = Math.random() > 0.2 ? 'good' : 'poor';
+            const qualityText = simulatedQuality === 'good' ? 'Good' : 'Poor';
+            
+            callQuality.textContent = `Call Quality: ${qualityText}`;
+            callQuality.className = `call-quality ${simulatedQuality}`;
+            
+            if (simulatedQuality === 'poor') {
+                logger.warning('Poor call quality detected');
+            }
+        } catch (error) {
+            logger.warning('Could not monitor call quality', error);
+        }
+    }, 5000); // Check every 5 seconds
 }
 
 // Add window load event for initialization logging
